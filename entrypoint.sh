@@ -66,7 +66,6 @@ fi
 printf '%s:%s\n' "$USERNAME" "$PASSWORD" | chpasswd
 
 # Modify setting for LXC containers
-
 file="/lib/systemd/system/lxcfs.service"
 
 if grep -qE '^[[:space:]]*ConditionVirtualization' "$file"; then
@@ -78,15 +77,21 @@ if grep -qE '^[[:space:]]*ConditionVirtualization' "$file"; then
 
 fi
 
+cat "$file"
+sleep 20
+
 # Automaticly add network interfaces
+file="/etc/network/interfaces"
+
 ip -o link show | awk -F': ' '{print $2}' | grep -v lo | sed 's/@.*//' | while IFS= read -r i; do
 
   iface=$(printf '%s' "$i" | sed 's/[][\/.^$*+?(){}|]/\\&/g')
 
-  if ! grep -qE "^iface[[:space:]]+$iface[[:space:]]" /etc/network/interfaces; then
-    printf 'auto %s\niface %s inet manual\n\n' "$i" "$i" >> /etc/network/interfaces
+  if ! grep -qE "^iface[[:space:]]+$iface[[:space:]]" "$file"; then
+    printf 'auto %s\niface %s inet manual\n\n' "$i" "$i" >> "$file"
   fi
 
 done
-
+cat "$file"
+sleep 20
 exec /sbin/init 3
