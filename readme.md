@@ -57,7 +57,7 @@ docker run -it --rm --name proxmox --hostname proxmox -e "USERNAME=root" -e "PAS
   
   - Start the container and connect to [port 8006](http://127.0.0.1:8006/) using your web browser.
 
-  - Login using the username and password you specified (defaults to `root`/`root`)
+  - Login using the credentials you specified in the `USERNAME` and `PASSWORD` environment variables.
   
   Enjoy your time with your brand new Proxmox installation, and don't forget to star this repo!
 
