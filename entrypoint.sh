@@ -65,6 +65,19 @@ fi
 # Update username and password
 printf '%s:%s\n' "$USERNAME" "$PASSWORD" | chpasswd
 
+# Modify setting for LXC containers
+
+file="/lib/systemd/system/lxcfs.service"
+
+if grep -qE '^[[:space:]]*ConditionVirtualization' "$file"; then
+
+    # Comment the line if it is not already commented
+    sed -i '/^[[:space:]]*ConditionVirtualization/ {
+        /^[[:space:]]*#/! s/^[[:space:]]*/#/
+    }' "$file"
+
+fi
+
 # Automaticly add network interfaces
 ip -o link show | awk -F': ' '{print $2}' | grep -v lo | sed 's/@.*//' | while IFS= read -r i; do
 
@@ -75,8 +88,5 @@ ip -o link show | awk -F': ' '{print $2}' | grep -v lo | sed 's/@.*//' | while I
   fi
 
 done
-
-cat /etc/network/interfaces
-sleep 10
 
 exec /sbin/init 3
