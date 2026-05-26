@@ -15,8 +15,8 @@ warn () { printf "%b%s%b" "\E[1;31m❯ " "Warning: ${1:-}" "\E[0m\n" >&2; }
 [ "$(id -u)" -ne "0" ] && error "Script must be executed with root privileges." && exit 12
 
 # Display version number
-info "❯ Starting Proxmox for Docker v$(</run/version)..."
-info "❯ For support visit https://github.com/dockur/proxmox"
+info "Starting Proxmox for Docker v$(</run/version)..."
+info "For support visit https://github.com/dockur/proxmox"
 echo ""
 
 # Update password for root
