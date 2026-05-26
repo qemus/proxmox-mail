@@ -74,6 +74,28 @@ docker run -it --rm --name proxmox --hostname pve --privileged -e "PASSWORD=root
   
   Enjoy your time with your brand new Proxmox installation, and don't forget to star this repo!
 
+### How do I change the location of the storage pool?
+
+  To change the storage location for the `local` storage pool used by Proxmox, include the following bind mount in your compose file:
+
+  ```yaml
+  volumes:
+    - ./storage:/var/lib/vz
+  ```
+
+  Replace the example path `./storage` with the desired storage folder or named volume. All disks and images will be stored here.
+
+### How do I change the location of the settings files?
+
+  To change the location for the Proxmox settings and configuration files, include the following bind mount in your compose file:
+  
+  ```yaml
+  volumes:
+    - ./config:/etc/pve
+  ```
+
+  Replace the example path `./config` with the desired storage folder or named volume. All your configuration files will go here.
+
 ### How can I setup networking for the virtual machines?
 
   - In the Proxmox web-interface, go to `Datacenter` -> `pve` --> `System` -> `Network`.
