@@ -83,11 +83,11 @@ docker run -it --rm --name proxmox --hostname pve --privileged -e "PASSWORD=root
     - ./storage:/var/lib/vz
   ```
 
-  Replace the example path `./storage` with the desired storage folder or named volume. All large objects (like disk files and .iso images) will be stored here.
+  Replace the example path `./storage` with the desired storage folder or named volume. All large objects (like disk images and .iso files) will be stored here.
 
-### How do I change the location of the configuration database?
+### How do I change the location of the configuration?
 
-  To change the location for the Proxmox VE configuration database, include the following bind mount in your compose file:
+  To change the location of your Proxmox VE configuration, include the following bind mount in your compose file:
   
   ```yaml
   volumes:
