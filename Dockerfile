@@ -133,7 +133,7 @@ rm -rf /root/.gnupg
 sed -i 's/^ConditionVirtualization=!container/#&/' /lib/systemd/system/lxcfs.service
 
 # Add loop devices for LXC
-echo "modprobe loop" >> /etc/rc.local
+echo "modprobe loop 2>/dev/null || :" >> /etc/rc.local
 echo "for i in \$(seq 0 30); do" >> /etc/rc.local
 echo "  if [ ! -e /dev/loop\$i ]; then" >> /etc/rc.local
 echo "    mknod -m 0660 /dev/loop\$i b 7 \$i" >> /etc/rc.local
