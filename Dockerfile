@@ -197,7 +197,6 @@ ENV PASSWORD="root"
 
 EXPOSE 8443
 
-VOLUME /etc/proxmox-datacenter-manager
 VOLUME /var/lib/proxmox-datacenter-manager
 
 STOPSIGNAL SIGRTMIN+3
