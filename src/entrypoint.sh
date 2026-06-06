@@ -16,12 +16,9 @@ warn () { printf "%b%s%b" "\E[1;31m❯ " "Warning: ${1:-}" "\E[0m\n" >&2; }
 [ ! -f "/usr/local/bin/entrypoint.sh" ] && error "Script must be run inside the container!" && exit 12
 
 # Display version number
-info "Starting Proxmox for Docker v$(</etc/version)..."
-info "For support visit https://github.com/dockur/proxmox"
+info "Starting Proxmox Datacenter Manager for Docker v$(</etc/version)..."
+info "For support visit https://github.com/dockur/proxmox-dm"
 echo ""
-
-# Set shm size to 1G to prevent cluster joining issue
-mount -o remount,size=1G /dev/shm
 
 # Update password for root
 printf 'root:%s\n' "$PASSWORD" | chpasswd
@@ -38,14 +35,14 @@ MAX_CAP=$(((1 << (LAST_CAP + 1)) - 1))
 
 # Check if container is privileged
 if [ "${CAP_BND}" -ne "${MAX_CAP}" ]; then
-  error "Please start the container with the --privileged flag!"
-  [[ "${DEBUG:-}" != [Yy1]* ]] && exit 14
+  warn "please start the container with the --privileged flag!"
+  #[[ "${DEBUG:-}" != [Yy1]* ]] && exit 14
 fi
 
 # Check if /dev/fuse is available
 if [ ! -c /dev/fuse ]; then
-  error "Could not access /dev/fuse, make sure this kernel module is loaded!"
-  [[ "${DEBUG:-}" != [Yy1]* ]] && exit 16
+  warn "could not access /dev/fuse, make sure this kernel module is loaded!"
+  #[[ "${DEBUG:-}" != [Yy1]* ]] && exit 16
 fi
 
 # Check KVM support
@@ -67,11 +64,8 @@ else
 fi
 
 if [ -n "$KVM_ERR" ]; then
-  error "KVM acceleration is not available $KVM_ERR, see the FAQ for possible causes."
-  [[ "${DEBUG:-}" != [Yy1]* ]] && exit 19
+  warn "KVM acceleration is not available $KVM_ERR, see the FAQ for possible causes."
+  #[[ "${DEBUG:-}" != [Yy1]* ]] && exit 19
 fi
-
-# Initialize network
-. network.sh
 
 exec "$@"
