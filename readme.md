@@ -1,6 +1,6 @@
 <h1 align="center">Proxmox Backup Server<br />
 <div align="center">
-<a href="https://github.com/dockur/proxmox-backup/"><img src="https://github.com/dockur/proxmox-backup/raw/master/.github/logo.png" title="Logo" style="max-width:100%;" width="128" /></a>
+<a href="https://github.com/dockur/proxmox-dm/"><img src="https://github.com/dockur/proxmox-dm/raw/master/.github/logo.png" title="Logo" style="max-width:100%;" width="128" /></a>
 </div>
 <div align="center">
 
@@ -11,7 +11,7 @@
 
 </div></h1>
 
-Proxmox Backup Server inside a Docker container.
+Proxmox Datacenter Manager inside a Docker container.
 
 ## Features ✨
 
@@ -52,7 +52,7 @@ docker run -it --rm --name proxmox --hostname pve --privileged -e "PASSWORD=root
 
 ##### Via Github Codespaces:
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/dockur/proxmox-backup)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/dockur/proxmox-dm)
 
 ## Requirements 🛠️
 
@@ -66,7 +66,7 @@ docker run -it --rm --name proxmox --hostname pve --privileged -e "PASSWORD=root
 ## Screenshot 📸
 
 <div align="center">
-<a href="https://github.com/dockur/proxmox-backup"><img src="https://raw.githubusercontent.com/dockur/proxmox-backup/master/.github/screenshot.png" title="Screenshot" style="max-width:100%;" width="256" /></a>
+<a href="https://github.com/dockur/proxmox-dm"><img src="https://raw.githubusercontent.com/dockur/proxmox-dm/master/.github/screenshot.png" title="Screenshot" style="max-width:100%;" width="256" /></a>
 </div>
 
 ## FAQ 💬
@@ -134,15 +134,15 @@ docker run -it --rm --name proxmox --hostname pve --privileged -e "PASSWORD=root
 Special thanks to [LongQT-sea](https://github.com/LongQT-sea), this project would not exist without his invaluable work.
 
 ## Stars 🌟
-[![Stars](https://starchart.cc/dockur/proxmox-backup.svg?variant=adaptive)](https://starchart.cc/dockur/proxmox-backup)
+[![Stars](https://starchart.cc/dockur/proxmox-dm.svg?variant=adaptive)](https://starchart.cc/dockur/proxmox-dm)
 
-[build_url]: https://github.com/dockur/proxmox-backup/
-[hub_url]: https://hub.docker.com/r/dockurr/proxmox-backup/
-[tag_url]: https://hub.docker.com/r/dockurr/proxmox-backup/tags
-[pkg_url]: https://github.com/dockur/proxmox-backup/pkgs/container/proxmox-backup
+[build_url]: https://github.com/dockur/proxmox-dm/
+[hub_url]: https://hub.docker.com/r/dockurr/proxmox-dm/
+[tag_url]: https://hub.docker.com/r/dockurr/proxmox-dm/tags
+[pkg_url]: https://github.com/dockur/proxmox-dm/pkgs/container/proxmox-dm
 
-[Build]: https://github.com/dockur/proxmox-backup/actions/workflows/build.yml/badge.svg
-[Size]: https://img.shields.io/docker/image-size/dockurr/proxmox-backup/latest?color=066da5&label=size
-[Pulls]: https://img.shields.io/docker/pulls/dockurr/proxmox-backup.svg?style=flat&label=pulls&logo=docker
-[Version]: https://img.shields.io/docker/v/dockurr/proxmox-backup/latest?arch=amd64&sort=semver&color=066da5
-[Package]: https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fipitio.github.io%2Fbackage%2Fdockur%2Fproxmox-backup%2Fproxmox-backup.json&query=%24.downloads&logo=github&style=flat&color=066da5&label=pulls
+[Build]: https://github.com/dockur/proxmox-dm/actions/workflows/build.yml/badge.svg
+[Size]: https://img.shields.io/docker/image-size/dockurr/proxmox-dm/latest?color=066da5&label=size
+[Pulls]: https://img.shields.io/docker/pulls/dockurr/proxmox-dm.svg?style=flat&label=pulls&logo=docker
+[Version]: https://img.shields.io/docker/v/dockurr/proxmox-dm/latest?arch=amd64&sort=semver&color=066da5
+[Package]: https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fipitio.github.io%2Fbackage%2Fdockur%2Fproxmox-dm%2Fproxmox-dm.json&query=%24.downloads&logo=github&style=flat&color=066da5&label=pulls
