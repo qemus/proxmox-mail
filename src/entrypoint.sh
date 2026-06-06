@@ -74,7 +74,9 @@ dir="/etc/proxmox-datacenter-manager"
 uid=$(stat -c '%u' "$dir")
 
 if [ "$uid" -eq 0 ]; then
-  chown -R 33:33 "$dir"
+  user=$(grep '^User=' /lib/systemd/system/proxmox-datacenter-api.service)
+  error "user=$user"
+  chown -R "$user:$user" "$dir"
 fi
 
 exec "$@"
