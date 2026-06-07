@@ -84,9 +84,9 @@ volumes:
 
   Replace the example paths `./config` and `./data` with the desired folders or named volumes.
 
-### Is there also Proxmox VE in a container?
+### Are there containers available for other Proxmox products?
 
-  Yes, see our [dockur/proxmox](https://github.com/dockur/proxmox) repository.
+  Yes, see our and [Proxmox VE](https://github.com/dockur/proxmox) and [Proxmox Backup Server](https://github.com/dockur/proxmox-backup) containers.
 
 ## Acknowledgements 🙏
 
