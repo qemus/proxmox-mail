@@ -74,10 +74,6 @@ elif ! check_localtime; then
   set_timezone "UTC"
 fi
 
-# Start rsyslog
-rsyslogd
-RSYSLOG_PID=$(cat /var/run/rsyslogd.pid 2>/dev/null || echo "")
-
 # Ensure directory permissions
 user="www-data"
 dir="/etc/proxmox-datacenter-manager"
@@ -136,6 +132,18 @@ if [ ! -f "$keys/api.key" ] || [ ! -f "$keys/api.pem" ]; then
   chown "root:$user" "$keys/api.pem"
 fi
 
+echo "Starting Postfix..."
+RELAY_HOST=${RELAY_HOST:-ext.home.local}
+sed -i "s/RELAY_HOST/$RELAY_HOST/" /etc/postfix/main.cf
+
+/etc/init.d/postfix start || ok=1
+read -r POSTFIX_PID < /var/spool/postfix/pid/master.pid
+
+# Start rsyslog
+echo "Starting rsyslog..."
+rsyslogd
+RSYSLOG_PID=$(cat /var/run/rsyslogd.pid 2>/dev/null || echo "")
+
 _trap() {
   local func="$1"; shift
   local sig
@@ -154,21 +162,26 @@ cleanup() {
   touch /proxmox.end
   echo "Shutting down PDM services..."
 
-  # Stop in reverse order
-  if [[ -n "${API_PID:-}" ]] && kill -0 "$API_PID" 2>/dev/null; then
-    kill -TERM "$API_PID" 2>/dev/null || :
-  fi
+  pids=(
+    "$API_PID"
+    "$PRIV_API_PID"
+    "$POSTFIX_PID"
+    "$RSYSLOG_PID"
+  )
 
-  if [[ -n "${PRIV_API_PID:-}" ]] && kill -0 "$PRIV_API_PID" 2>/dev/null; then
-    kill -TERM "$PRIV_API_PID" 2>/dev/null || :
-  fi
-
-  if [[ -n "${RSYSLOG_PID:-}" ]] && kill -0 "$RSYSLOG_PID" 2>/dev/null; then
-    kill -TERM "$RSYSLOG_PID" 2>/dev/null || :
-  fi
+  # Send SIGTERM 
+  for pid in "${pids[@]}"; do
+    [[ -z "${pid:-}" ]] && continue
+    kill -0 "$pid" 2>/dev/null || continue
+    kill -TERM "$pid" 2>/dev/null || :
+  done
 
   # Wait for processes
-  wait -n "${PRIV_API_PID:-}" "${API_PID:-} ${RSYSLOG_PID:-}" 2>/dev/null || :
+  for pid in "${pids[@]}"; do
+    [[ -z "${pid:-}" ]] && continue
+    kill -0 "$pid" 2>/dev/null || continue
+    wait "$pid" 2>/dev/null || :
+  done
 
   echo ""
   echo "Shutdown completed successfully."
@@ -189,9 +202,9 @@ PRIV_API_PID=$!
 sock="/run/proxmox-datacenter-manager/priv.sock"
 
 # Wait for the privileged API socket to be ready
-for i in $(seq 1 30); do
+for i in $(seq 0 30); do
   [[ -S "$sock" ]] && break
-  info "Waiting for privileged API socket ($i/30)..."
+  (( i > 0 )) && info "Waiting for privileged API socket ($i/30)..."
   sleep 1
 done
 
