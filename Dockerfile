@@ -75,9 +75,6 @@ apt-get install -y \
   proxmox-datacenter-manager \
   proxmox-offline-mirror-helper
 
-# Generate locales
-locale-gen en_US.UTF-8
-
 # Remove enterprise repo added by Proxmox packages — keep only no-subscription
 rm -f /etc/apt/sources.list.d/pdm-enterprise.list \
       /etc/apt/sources.list.d/pdm-enterprise.sources \
@@ -90,6 +87,9 @@ apt-mark hold proxmox-datacenter-manager proxmox-mail-forward proxmox-offline-mi
 # Cleanup
 apt-get autoremove -y
 apt-get clean
+
+# Generate locales
+locale-gen en_US.UTF-8
 
 # Mask unneeded services 
 ln -sf /dev/null /etc/systemd/system/systemd-udevd.service
