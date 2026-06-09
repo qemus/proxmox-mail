@@ -89,8 +89,6 @@ DEB
     proxmox-datacenter-manager \
     proxmox-datacenter-manager-ui \
 
-  apt-mark hold proxmox-datacenter-manager-ui
-
 else
 
  apt-get install -y --no-install-recommends \
@@ -100,10 +98,9 @@ else
     apt-transport-https
 
   tmpdir="/tmp/deb"
-  rm -rf "$tmpdir"
   mkdir -p "$tmpdir"
 
-  # Download packages from qemus/proxmox-datacenter-arm64
+  # Download packages from repo qemus/proxmox-datacenter-arm64
   git clone --depth 1 https://github.com/qemus/proxmox-datacenter-arm64.git "$tmpdir"
   chmod +x "$tmpdir/build.sh"
 
@@ -118,7 +115,7 @@ else
 fi
 
 # Prevent system updates
-apt-mark hold proxmox-datacenter-manager
+apt-mark hold proxmox-datacenter-manager proxmox-datacenter-manager-ui
 
 # Install supercronic
 if [[ "$TARGETARCH" == "amd64" ]]; then
