@@ -16,28 +16,12 @@ warn () { printf "%b%s%b" "\E[1;31m❯ " "Warning: ${1:-}" "\E[0m\n" >&2; }
 [ ! -f "/usr/local/bin/entrypoint.sh" ] && error "Script must be run inside the container!" && exit 12
 
 # Display version number
-info "Starting Proxmox Datacenter Manager for Docker v$(</etc/version)..."
-info "For support visit https://github.com/dockur/proxmox-dm"
+info "Starting Proxmox Mail Gateway for Docker v$(</etc/version)..."
+info "For support visit https://github.com/dockur/proxmox-mail"
 echo ""
 
 # Update password for root
 printf 'root:%s\n' "$PASSWORD" | chpasswd
-
-# Get the capability bounding set
-CAP_BND=$(grep '^CapBnd:' /proc/$$/status | awk '{print $2}')
-CAP_BND=$(printf "%d" "0x${CAP_BND}")
-
-# Get the last capability number
-LAST_CAP=$(cat /proc/sys/kernel/cap_last_cap)
-
-# Calculate the maximum capability value
-MAX_CAP=$(((1 << (LAST_CAP + 1)) - 1))
-
-# Check if container is privileged
-if [ "${CAP_BND}" -ne "${MAX_CAP}" ]; then
-  error "Please start the container with the --privileged flag!"
-  [[ "${DEBUG:-}" != [Yy1]* ]] && exit 14
-fi
 
 # If missing timezone and localtime set them
 set_timezone() {
@@ -76,81 +60,74 @@ fi
 
 # Ensure directory permissions
 user="www-data"
-dir="/etc/proxmox-datacenter-manager"
 
+dir="/etc/pmg"
 mkdir -p "$dir"
-chmod 1770 "$dir" || :
-chown "$user:$user" "$dir" || :
-
-dir="/etc/proxmox-datacenter-manager/auth"
-mkdir -p "$dir"
-chmod 750 "$dir" || :
+chmod 0750 "$dir" || :
 chown "root:$user" "$dir" || :
 
-dir="/var/lib/proxmox-datacenter-manager"
+dir="/etc/pmg/dkim"
 mkdir -p "$dir"
-chown "$user:$user" "$dir" || :
+chmod 0750 "$dir" || :
+chown "root:$user" "$dir" || :
 
-dir="/var/lib/proxmox-datacenter-manager/rrdb"
-mkdir -p "$dir"
-chown "$user:$user" "$dir" || :
-chmod 755 "$dir" || :
-
-dir="/var/log/proxmox-datacenter-manager"
+dir="/var/lib/pmg"
 mkdir -p "$dir"
 chown "root:$user" "$dir" || :
 
-dir="/run/proxmox-datacenter-manager"
-mkdir -p "$dir/shmem"
-chmod 1770 "$dir" || :
+dir="/var/spool/pmg"
+mkdir -p "$dir"
 chown "root:$user" "$dir" || :
-chown "root:root" "$dir/shmem" || :
-mount -t tmpfs -o rw tmpfs "$dir/shmem"
+
+dir="/var/log/pmg"
+mkdir -p "$dir"
+chown "root:$user" "$dir" || :
+
+dir="/run/pmg"
+mkdir -p "$dir"
+chmod 0755 "$dir" || :
+chown "root:root" "$dir" || :
 
 # Generate keys
-keys="/etc/proxmox-datacenter-manager/auth"
+keys="/etc/pmg"
 
-if [[ ! -f "$keys/authkey.key" ]]; then
+if [[ ! -f "$keys/pmg-authkey.key" ]]; then
   info "Generating authentication keys..."
-  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out "$keys/authkey.key" 2>/dev/null
-  openssl pkey -in "$keys/authkey.key" -pubout -out "$keys/authkey.pub" 2>/dev/null
-  chmod 640 "$keys/authkey.key"
-  chmod 644 "$keys/authkey.pub"
-  chown "root:$user" "$keys/authkey.key"
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out "$keys/pmg-authkey.key" 2>/dev/null
+  openssl pkey -in "$keys/pmg-authkey.key" -pubout -out "$keys/pmg-authkey.pub" 2>/dev/null
+  chmod 640 "$keys/pmg-authkey.key"
+  chmod 644 "$keys/pmg-authkey.pub"
+  chown "root:$user" "$keys/pmg-authkey.key"
 fi
 
-if [[ ! -f "$keys/csrf.key" ]]; then
+if [[ ! -f "$keys/pmg-csrf.key" ]]; then
   info "Generating CSRF key..."
-  openssl rand -base64 32 > "$keys/csrf.key"
-  chmod 640 "$keys/csrf.key"
-  chown "root:$user" "$keys/csrf.key"
+  openssl rand -base64 32 > "$keys/pmg-csrf.key"
+  chmod 640 "$keys/pmg-csrf.key"
+  chown "root:$user" "$keys/pmg-csrf.key"
 fi
 
-if [ ! -f "$keys/api.key" ] || [ ! -f "$keys/api.pem" ]; then
-  info "Generating API key..."
-
-  openssl req -x509 -newkey rsa:4096 -keyout "$keys/api.key" -out "$keys/api.pem" -sha256 -days 3650 -nodes \
-              -subj "/C=XX/ST=StateName/L=CityName/O=CompanyName/OU=CompanySectionName/CN=CommonNameOrHostname" 2>/dev/null
-  chmod 640 "$keys/api.key"
-  chmod 640 "$keys/api.pem"
-  chown "root:$user" "$keys/api.key"
-  chown "root:$user" "$keys/api.pem"
-  echo ""
+if [[ ! -f "$keys/pmg-api.pem" ]]; then
+  info "Generating API certificate..."
+  pmgconfig apicert
 fi
 
-dir="/usr/libexec/proxmox"
+if [[ ! -f "$keys/pmg-tls.pem" ]]; then
+  info "Generating SMTP TLS certificate..."
+  pmgconfig tlscert
+fi
 
-echo "Starting Postfix..."
-RELAY_HOST=${RELAY_HOST:-ext.home.local}
-sed -i "s/RELAY_HOST/$RELAY_HOST/" /etc/postfix/main.cf
+# Start PostgreSQL
+echo "Starting PostgreSQL..."
+/etc/init.d/postgresql start || ok=1
 
-/etc/init.d/postfix start || ok=1
-read -r POSTFIX_PID < /var/spool/postfix/pid/master.pid
+# Initialize PMG configuration and database
+echo "Initializing PMG configuration..."
+pmgconfig init || :
+pmgconfig sync || :
 
-echo "Starting supercronic..."
-echo "30 2 * * * $dir/proxmox-datacenter-manager-daily-update 2>&1 | tee -a /tmp/daily.log" > /docker.cron
-supercronic -quiet -no-reap /docker.cron &
-CRON_PID=$!
+echo "Initializing PMG database..."
+pmgdb init || :
 
 # Start rsyslog
 echo "Starting rsyslog..."
@@ -187,6 +164,32 @@ ln -sf /dev/log /run/systemd/journal/socket
 
 touch /var/log/system.log
 tail -F /var/log/system.log &
+TAIL_PID=$!
+
+# Start Postfix
+echo "Starting Postfix..."
+/etc/init.d/postfix start || ok=1
+read -r POSTFIX_PID < /var/spool/postfix/pid/master.pid
+
+# Start supercronic
+echo "Starting supercronic..."
+
+cat >/docker.cron <<'EOF'
+# Run PMG hourly maintenance
+0 * * * * /usr/bin/pmg-hourly
+
+# Send daily administrator system report
+1 0 * * * /usr/bin/pmgreport --timespan yesterday --auto
+
+# Send daily user spam report mails and purge quarantine
+5 0 * * * /usr/bin/pmgqm purge; /usr/bin/pmgqm send --timespan yesterday
+
+# Run PMG daily maintenance
+30 3 * * * /usr/bin/pmg-daily
+EOF
+
+supercronic -quiet -no-reap /docker.cron &
+CRON_PID=$!
 
 _trap() {
   local func="$1"; shift
@@ -204,14 +207,19 @@ cleanup() {
   [[ $BASHPID != "$TRAP_PID" ]] && return 0
 
   touch /proxmox.end
-  echo "Shutting down PDM services..."
+  echo "Shutting down PMG services..."
+
+  pmgproxy stop 2>/dev/null || :
+  pmgdaemon stop 2>/dev/null || :
+  pmg-smtp-filter stop 2>/dev/null || :
+  pmgpolicy stop 2>/dev/null || :
+  pmgmirror stop 2>/dev/null || :
 
   pids=(
-    "$API_PID"
-    "$PRIV_API_PID"
     "$CRON_PID"
     "$POSTFIX_PID"
     "$RSYSLOG_PID"
+    "$TAIL_PID"
   )
 
   # Send SIGTERM
@@ -220,6 +228,9 @@ cleanup() {
     kill -0 "$pid" 2>/dev/null || continue
     kill -TERM "$pid" 2>/dev/null || :
   done
+
+  /etc/init.d/postfix stop 2>/dev/null || :
+  /etc/init.d/postgresql stop 2>/dev/null || :
 
   # Wait for processes
   for pid in "${pids[@]}"; do
@@ -237,45 +248,42 @@ cleanup() {
 rm -f /proxmox.end
 _trap cleanup SIGTERM SIGINT
 
-# Start PDM Services
-echo "Starting proxmox-datacenter-privileged-api..."
-"$dir/proxmox-datacenter-privileged-api" &
+# Start PMG Services
+echo "Starting pmgdaemon..."
+pmgdaemon start
 
-PRIV_API_PID=$!
-sock="/run/proxmox-datacenter-manager/priv.sock"
+echo "Starting pmgproxy..."
+pmgproxy start
 
-# Wait for the privileged API socket to be ready
-for i in $(seq 0 30); do
-  [[ -S "$sock" ]] && break
-  (( i > 0 )) && info "Waiting for privileged API socket ($i/30)..."
-  sleep 1
-done
+echo "Starting pmg-smtp-filter..."
+pmg-smtp-filter start
 
-if [[ ! -S "$sock" ]]; then
-  warn "Privileged API socket not found after 30s, starting API anyway."
-fi
+echo "Starting pmgpolicy..."
+pmgpolicy start
 
-echo "Starting proxmox-datacenter-api as $user on port ${PORT:-8443}..."
-msg="failed to collect blockdev statistics for "
-
-runuser -u www-data -- \
-    "$dir/proxmox-datacenter-api" \
-    2> >(grep -v "$msg" >&2) &
-API_PID=$!
+echo "Starting pmgmirror..."
+pmgmirror start || :
 
 echo ""
 info "------------------------------------------------------------------------------"
 info ""
-info ". Welcome to the Proxmox Datacenter Manager v$(</etc/version). Connect your web browser to:"
+info ". Welcome to the Proxmox Mail Gateway v$(</etc/version). Connect your web browser to:"
 info ""
-info ".   https://127.0.0.1:${PORT:-8443}"
+info ".   https://127.0.0.1:${PORT:-8006}"
 info ""
 info "------------------------------------------------------------------------------"
 info ""
 echo ""
 
 # Wait for processes
-wait -n "${PRIV_API_PID:-}" "${API_PID:-}" 2>/dev/null || :
+while true; do
+  sleep 5
 
-info "A PDM process exited unexpectedly. Shutting down..."
+  pmgdaemon status >/dev/null 2>&1 || break
+  pmgproxy status >/dev/null 2>&1 || break
+  pmg-smtp-filter status >/dev/null 2>&1 || break
+  pmgpolicy status >/dev/null 2>&1 || break
+done
+
+info "A PMG process exited unexpectedly. Shutting down..."
 cleanup
