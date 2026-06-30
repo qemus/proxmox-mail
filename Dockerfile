@@ -3,7 +3,7 @@
 FROM debian:trixie-slim
 
 ARG TARGETARCH
-ARG VERSION_ARG="1.1.4"
+ARG VERSION_ARG="9.1"
 
 ARG DEBCONF_NOWARNINGS="yes"
 ARG DEBIAN_FRONTEND="noninteractive"
@@ -19,7 +19,6 @@ set -Eeuo pipefail
 # Install prerequisites
 apt-get update
 apt-get install -y --no-install-recommends \
-  bc \
   jq \
   curl \
   tini \
@@ -27,37 +26,25 @@ apt-get install -y --no-install-recommends \
   wget \
   htop \
   less \
-  cpio \
   dpkg \
-  iotop \
   gnupg \
   procps \
   locales \
   rsyslog \
   postfix \
-  iptables \
   iproute2 \
-  ifupdown2 \
-  jfsutils \
-  xfsprogs \
-  e2fsprogs \
   net-tools \
-  nfs-common \
-  cifs-utils \
-  traceroute \
-  open-iscsi \
-  btrfs-progs \
+  dnsutils \
   iputils-ping \
   netcat-openbsd \
-  ca-certificates \
-  isc-dhcp-client
+  ca-certificates
 
 # Prevent services from starting during install
 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
 chmod +x /usr/sbin/policy-rc.d
 
 # Block unneeded packages in container
-cat >/etc/apt/preferences.d/99-pdm-unneeded-packages <<BLK
+cat >/etc/apt/preferences.d/99-pmg-unneeded-packages <<BLK
 Package: proxmox-default-kernel proxmox-kernel-* pve-firmware
 Pin: release *
 Pin-Priority: -1
@@ -71,67 +58,52 @@ chmod +x /usr/bin/unshare
 dpkg-divert --local --rename --add /usr/sbin/update-initramfs
 printf '#!/bin/sh\nexit 0\n' > /usr/sbin/update-initramfs
 chmod +x /usr/sbin/update-initramfs
-dpkg-divert --local --rename --add /usr/sbin/ifreload
-printf '#!/bin/sh\n[ "$1" = "-V" ] && printf "%%s\n" "ifupdown2:3.3.0-1+pmx12"\nexit 0\n' > /usr/sbin/ifreload
-chmod +x /usr/sbin/ifreload
 printf '#!/bin/sh\nexit 0\n' > /usr/local/sbin/systemctl
 chmod +x /usr/local/sbin/systemctl
 
-# Install Proxmox Datacenter Manager
+# Install Proxmox Mail Gateway
 
 if [[ "$TARGETARCH" == "amd64" ]]; then
 
-  # Add Proxmox Datacenter Manager repository
+  # Add Proxmox Mail Gateway repository
   curl -sL https://enterprise.proxmox.com/debian/proxmox-archive-keyring-trixie.gpg \
        -o /usr/share/keyrings/proxmox-archive-keyring.gpg
 
-  cat <<'DEB' | sed 's/^[[:space:]]*//' >/etc/apt/sources.list.d/pdm-no-subs.sources
+  cat <<'DEB' | sed 's/^[[:space:]]*//' >/etc/apt/sources.list.d/pmg-no-subs.sources
     Types: deb
-    URIs: http://download.proxmox.com/debian/pdm
+    URIs: http://download.proxmox.com/debian/pmg
     Suites: trixie
-    Components: pdm-no-subscription
+    Components: pmg-no-subscription
     Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
 DEB
 
   apt-get update
   apt-get install -y --no-install-recommends \
-    proxmox-datacenter-manager \
-    proxmox-datacenter-manager-ui \
-    proxmox-datacenter-manager-docs \
-    proxmox-datacenter-manager-client
+    proxmox-mailgateway
 
 else
 
- apt-get install -y --no-install-recommends \
-    git \
-    sudo \
-    dpkg-dev \
-    apt-transport-https
+  # Add Proxmox Mail Gateway repository
+  curl -sL https://enterprise.proxmox.com/debian/proxmox-archive-keyring-trixie.gpg \
+       -o /usr/share/keyrings/proxmox-archive-keyring.gpg
 
-  tmpdir="/tmp/deb"
-  mkdir -p "$tmpdir"
+  cat <<'DEB' | sed 's/^[[:space:]]*//' >/etc/apt/sources.list.d/pmg-no-subs.sources
+    Types: deb
+    URIs: http://download.proxmox.com/debian/pmg
+    Suites: trixie
+    Components: pmg-no-subscription
+    Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+DEB
 
-  # Download packages from repo qemus/proxmox-datacenter-arm64
-  git clone --depth 1 https://github.com/qemus/proxmox-datacenter-arm64.git "$tmpdir"
-  chmod +x "$tmpdir/build.sh"
-
-  (cd "$tmpdir" && ./build.sh "install=${VERSION_ARG}")
-  rm -rf "$tmpdir"
-
-  SUDO_FORCE_REMOVE=yes apt-get remove -y \
-    git \
-    sudo \
-    dpkg-dev \
-    apt-transport-https
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    proxmox-mailgateway
 
 fi
 
 # Prevent system updates
 apt-mark hold \
-  proxmox-datacenter-manager \
-  proxmox-datacenter-manager-ui \
-  proxmox-datacenter-manager-docs \
-  proxmox-datacenter-manager-client
+  proxmox-mailgateway
 
 # Install supercronic
 if [[ "$TARGETARCH" == "amd64" ]]; then
@@ -152,8 +124,8 @@ mv "$SUPERCRONIC" "/usr/local/bin/${SUPERCRONIC}"
 ln -s "/usr/local/bin/${SUPERCRONIC}" /usr/local/bin/supercronic
 
 # Remove enterprise repo added by Proxmox packages — keep only no-subscription
-rm -f /etc/apt/sources.list.d/pdm-enterprise.list \
-      /etc/apt/sources.list.d/pdm-enterprise.sources \
+rm -f /etc/apt/sources.list.d/pmg-enterprise.list \
+      /etc/apt/sources.list.d/pmg-enterprise.sources \
       /etc/apt/sources.list.d/ceph.list \
       /etc/apt/sources.list.d/ceph.sources
 
@@ -187,12 +159,16 @@ COPY --chmod=755 ./src /usr/local/bin/
 
 ENV PASSWORD="root"
 
-EXPOSE 8443
+EXPOSE 25
+EXPOSE 26
+EXPOSE 8006
 
-VOLUME /etc/proxmox-datacenter-manager
-VOLUME /var/lib/proxmox-datacenter-manager
+VOLUME /etc/pmg
+VOLUME /var/lib/pmg
+VOLUME /var/spool/pmg
+VOLUME /var/lib/postgresql
 
 HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -kLfSs https://localhost:8443/ >/dev/null || exit 1
+  CMD curl -kLfSs https://localhost:8006/ >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "-s", "/usr/local/bin/entrypoint.sh"]
