@@ -91,42 +91,27 @@ DEB
 
 else
 
-  packages_url="http://download.proxmox.com/debian/pmg/dists/trixie/pmg-no-subscription/binary-amd64/Packages.gz"
+  apt-get install -y --no-install-recommends \
+    git \
+    sudo \
+    dpkg-dev \
+    apt-transport-https
 
-  tmpdir="/tmp/pmg-debs"
+  tmpdir="/tmp/deb"
   mkdir -p "$tmpdir"
 
-  packages=(
-    pmg-api
-    pmg-gui
-    pmg-docs
-    pmg-i18n
-    pmg-log-tracker
-    proxmox-spamassassin
-  )
+  # Download packages from repo qemus/proxmox-mail-arm64
+  git clone --depth 1 https://github.com/qemus/proxmox-mail-arm64.git "$tmpdir"
+  chmod +x "$tmpdir/build.sh"
 
-  for pkg in "${packages[@]}"; do
-    file="$(
-      curl -fsSL "$packages_url" |
-        gzip -dc |
-        awk -v pkg="$pkg" '
-          $1 == "Package:" && $2 == pkg { found=1 }
-          found && $1 == "Architecture:" && $2 != "all" { found=0 }
-          found && $1 == "Filename:" { print $2; exit }
-        '
-    )"
-
-    if [ -z "$file" ]; then
-      echo "Could not find Architecture: all package: $pkg" >&2
-      exit 1
-    fi
-
-    curl -fL "http://download.proxmox.com/debian/pmg/$file" -o "$tmpdir/${pkg}.deb"
-
-  done
-
-  apt-get install -y --no-install-recommends "$tmpdir"/*.deb
+  (cd "$tmpdir" && ./build.sh "install=${VERSION_ARG}")
   rm -rf "$tmpdir"
+
+  SUDO_FORCE_REMOVE=yes apt-get remove -y \
+    git \
+    sudo \
+    dpkg-dev \
+    apt-transport-https
 
 fi
 
