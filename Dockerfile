@@ -122,6 +122,14 @@ apt-mark hold \
   pmg-i18n \
   pmg-log-tracker
 
+# Backup packaged PMG state files outside /var/lib/pmg because /var/lib/pmg
+# may be mounted as a volume and hide files installed by PMG packages.
+RUN mkdir -p /usr/share/pmg/var-lib-pmg.dist && \
+    if [ -d /var/lib/pmg ]; then \
+      cp -a /var/lib/pmg/. /usr/share/pmg/var-lib-pmg.dist/; \
+    fi && \
+    test -f /usr/share/pmg/var-lib-pmg.dist/templates/main.cf.in
+
 # Install supercronic
 if [[ "$TARGETARCH" == "amd64" ]]; then
 
