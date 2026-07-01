@@ -207,6 +207,18 @@ pmgconfig init
 echo "Initializing PMG database..."
 pmgdb init
 
+# Ensure PMG template directory exists
+echo "Checking PMG templates..."
+
+mkdir -p /etc/pmg/templates
+
+if [ ! -f /var/lib/pmg/templates/main.cf.in ]; then
+  error "PMG template missing: /var/lib/pmg/templates/main.cf.in"
+  echo "Installed PMG template files:"
+  find /var/lib/pmg -maxdepth 3 -type f | sort || :
+  exit 20
+fi
+
 echo "Syncing PMG configuration..."
 pmgconfig sync
 
