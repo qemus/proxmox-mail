@@ -6,7 +6,6 @@ set -Eeuo pipefail
 : "${PASSWORD:="root"}"   # Default password
 
 # Helper functions
-
 info () { printf "%b%s%b" "\E[1;34m❯ \E[1;36m" "${1:-}" "\E[0m\n"; }
 error () { printf "%b%s%b" "\E[1;31m❯ " "ERROR: ${1:-}" "\E[0m\n" >&2; }
 warn () { printf "%b%s%b" "\E[1;31m❯ " "Warning: ${1:-}" "\E[0m\n" >&2; }
@@ -88,6 +87,43 @@ mkdir -p "$dir"
 chmod 0755 "$dir" || :
 chown "root:root" "$dir" || :
 
+# Start rsyslog early because PMG tools expect /dev/log
+echo "Starting rsyslog..."
+
+cat >/etc/rsyslog.conf <<'EOF'
+module(load="imuxsock")
+input(type="imuxsock" Socket="/dev/log")
+template(name="DockerFormat" type="string" string="%programname%:%msg%\n")
+
+if $msg contains '#000' then stop
+if $msg contains 'IORITY' then stop
+if $msg contains 'F_LOG_TARGET' then stop
+if $msg contains 'SYSLOG_IDENTIFIER' then stop
+
+if $programname == 'runuser' then stop
+if $programname == 'rsyslogd' and $msg contains '[origin software="rsyslogd"' then stop
+
+*.* action(type="omfile" file="/var/log/system.log" template="DockerFormat")
+EOF
+
+rm -f /dev/log /var/log/system.log
+touch /var/log/system.log
+chmod 0644 /etc/rsyslog.conf /var/log/system.log
+
+rsyslogd -n -iNONE -f /etc/rsyslog.conf &
+RSYSLOG_PID=$!
+
+while [ ! -S /dev/log ]; do
+  sleep 0.2
+done
+
+mkdir -p /run/systemd/journal
+ln -sf /dev/log /run/systemd/journal/syslog
+ln -sf /dev/log /run/systemd/journal/socket
+
+tail -F /var/log/system.log &
+TAIL_PID=$!
+
 # Generate keys
 keys="/etc/pmg"
 
@@ -119,57 +155,49 @@ fi
 
 # Start PostgreSQL
 echo "Starting PostgreSQL..."
-/etc/init.d/postgresql start || ok=1
 
-# Initialize PMG configuration and database
-echo "Initializing PMG configuration..."
-pmgconfig init || :
-pmgconfig sync || :
+PG_VERSION="$(ls /usr/lib/postgresql | sort -V | tail -n1)"
+PG_CLUSTER="main"
+PG_DATA="/var/lib/postgresql/$PG_VERSION/$PG_CLUSTER"
 
-echo "Initializing PMG database..."
-pmgdb init || :
+mkdir -p /var/run/postgresql
+chown postgres:postgres /var/run/postgresql
+chmod 2775 /var/run/postgresql
 
-# Start rsyslog
-echo "Starting rsyslog..."
+# If a cluster config exists but the actual database is missing, remove the broken cluster.
+if [ ! -s "$PG_DATA/PG_VERSION" ] && [ -d "/etc/postgresql/$PG_VERSION/$PG_CLUSTER" ]; then
+  echo "Removing broken PostgreSQL cluster config..."
+  pg_dropcluster "$PG_VERSION" "$PG_CLUSTER" --stop || :
+fi
 
-cat >/etc/rsyslog.conf <<'EOF'
-module(load="imuxsock")
-input(type="imuxsock" Socket="/dev/log")
-template(name="DockerFormat" type="string" string="%programname%:%msg%\n")
+# Create the PostgreSQL cluster if it does not exist.
+if [ ! -s "$PG_DATA/PG_VERSION" ]; then
+  echo "Creating PostgreSQL $PG_VERSION/$PG_CLUSTER cluster..."
+  pg_createcluster "$PG_VERSION" "$PG_CLUSTER"
+fi
 
-if $msg contains '#000' then stop
-if $msg contains 'IORITY' then stop
-if $msg contains 'F_LOG_TARGET' then stop
-if $msg contains 'SYSLOG_IDENTIFIER' then stop
+pg_ctlcluster "$PG_VERSION" "$PG_CLUSTER" start
 
-if $programname == 'runuser' then stop
-if $programname == 'rsyslogd' and $msg contains '[origin software="rsyslogd"' then stop
-*.* action(type="omfile" file="/var/log/system.log" template="DockerFormat")
-EOF
-
-rm -f /var/log/system.log
-chmod 0644 /etc/rsyslog.conf
-
-rsyslogd -n -iNONE -f /etc/rsyslog.conf &
-RSYSLOG_PID=$!
-
-while [ ! -S /dev/log ]; do
+until pg_isready -q -h /var/run/postgresql -p 5432 -U postgres; do
   sleep 0.2
 done
 
-mkdir -p /run/systemd/journal
+# Initialize PMG configuration and database
+echo "Initializing PMG configuration..."
+pmgconfig init
+pmgconfig sync
 
-ln -sf /dev/log /run/systemd/journal/syslog
-ln -sf /dev/log /run/systemd/journal/socket
-
-touch /var/log/system.log
-tail -F /var/log/system.log &
-TAIL_PID=$!
+echo "Initializing PMG database..."
+pmgdb init
 
 # Start Postfix
 echo "Starting Postfix..."
-/etc/init.d/postfix start || ok=1
-read -r POSTFIX_PID < /var/spool/postfix/pid/master.pid
+/etc/init.d/postfix start || :
+POSTFIX_PID=""
+
+if [ -f /var/spool/postfix/pid/master.pid ]; then
+  read -r POSTFIX_PID < /var/spool/postfix/pid/master.pid
+fi
 
 # Start supercronic
 echo "Starting supercronic..."
@@ -191,6 +219,7 @@ EOF
 supercronic -quiet -no-reap /docker.cron &
 CRON_PID=$!
 
+# Trap helper
 _trap() {
   local func="$1"; shift
   local sig
@@ -202,27 +231,32 @@ _trap() {
 }
 
 cleanup() {
-
   [ -f /proxmox.end ] && return 0
-  [[ $BASHPID != "$TRAP_PID" ]] && return 0
+  [[ "${BASHPID:-}" != "${TRAP_PID:-}" ]] && return 0
 
   touch /proxmox.end
   echo "Shutting down PMG services..."
 
+  pids=(
+    "${PMGDAEMON_PID:-}"
+    "${PMGPROXY_PID:-}"
+    "${PMGSMTPFILTER_PID:-}"
+    "${PMGPOLICY_PID:-}"
+    "${PMGMIRROR_PID:-}"
+    "${CRON_PID:-}"
+    "${POSTFIX_PID:-}"
+    "${RSYSLOG_PID:-}"
+    "${TAIL_PID:-}"
+  )
+
+  # Ask PMG daemons to stop using their own commands when possible.
   pmgproxy stop 2>/dev/null || :
   pmgdaemon stop 2>/dev/null || :
   pmg-smtp-filter stop 2>/dev/null || :
   pmgpolicy stop 2>/dev/null || :
   pmgmirror stop 2>/dev/null || :
 
-  pids=(
-    "$CRON_PID"
-    "$POSTFIX_PID"
-    "$RSYSLOG_PID"
-    "$TAIL_PID"
-  )
-
-  # Send SIGTERM
+  # Send SIGTERM to tracked processes.
   for pid in "${pids[@]}"; do
     [[ -z "${pid:-}" ]] && continue
     kill -0 "$pid" 2>/dev/null || continue
@@ -230,9 +264,10 @@ cleanup() {
   done
 
   /etc/init.d/postfix stop 2>/dev/null || :
+  pg_ctlcluster "$PG_VERSION" "$PG_CLUSTER" stop 2>/dev/null || :
   /etc/init.d/postgresql stop 2>/dev/null || :
 
-  # Wait for processes
+  # Wait for processes.
   for pid in "${pids[@]}"; do
     [[ -z "${pid:-}" ]] && continue
     kill -0 "$pid" 2>/dev/null || continue
@@ -246,23 +281,32 @@ cleanup() {
 
 # Init trap
 rm -f /proxmox.end
+TRAP_PID=$BASHPID
 _trap cleanup SIGTERM SIGINT
 
-# Start PMG Services
+# Start PMG services without systemd.
+#
+# The normal "start" mode tries to use systemctl in a real PMG install.
+# Debug mode keeps the daemons in the foreground, so Docker can track them.
 echo "Starting pmgdaemon..."
-pmgdaemon start
+pmgdaemon start --debug 1 &
+PMGDAEMON_PID=$!
 
 echo "Starting pmgproxy..."
-pmgproxy start
+pmgproxy start --debug 1 &
+PMGPROXY_PID=$!
 
 echo "Starting pmg-smtp-filter..."
-pmg-smtp-filter start
+pmg-smtp-filter start --debug 1 &
+PMGSMTPFILTER_PID=$!
 
 echo "Starting pmgpolicy..."
-pmgpolicy start
+pmgpolicy start --debug 1 &
+PMGPOLICY_PID=$!
 
 echo "Starting pmgmirror..."
-pmgmirror start || :
+pmgmirror start --debug 1 &
+PMGMIRROR_PID=$!
 
 echo ""
 info "------------------------------------------------------------------------------"
@@ -275,14 +319,15 @@ info "--------------------------------------------------------------------------
 info ""
 echo ""
 
-# Wait for processes
+# Wait for processes.
+# Do not use "pmgdaemon status" here because that may call systemd.
 while true; do
   sleep 5
 
-  pmgdaemon status >/dev/null 2>&1 || break
-  pmgproxy status >/dev/null 2>&1 || break
-  pmg-smtp-filter status >/dev/null 2>&1 || break
-  pmgpolicy status >/dev/null 2>&1 || break
+  kill -0 "$PMGDAEMON_PID" 2>/dev/null || break
+  kill -0 "$PMGPROXY_PID" 2>/dev/null || break
+  kill -0 "$PMGSMTPFILTER_PID" 2>/dev/null || break
+  kill -0 "$PMGPOLICY_PID" 2>/dev/null || break
 done
 
 info "A PMG process exited unexpectedly. Shutting down..."
