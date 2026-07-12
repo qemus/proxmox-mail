@@ -36,6 +36,7 @@ services:
     container_name: pmg
     image: dockurr/proxmox-mail
     environment:
+      TZ: "UTC"
       PASSWORD: "root"
       DOMAIN: "pmg.example.com"
     ports:
